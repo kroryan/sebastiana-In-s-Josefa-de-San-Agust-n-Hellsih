@@ -1,0 +1,20 @@
+/unity_project/Library/
+/unity_project/Temp/
+/unity_project/Logs/
+/unity_project/Obj/
+/unity_project/UserSettings/
+/unity_project/*.csproj
+/unity_project/*.sln
+/unity_project/Assets/Plugins/PlayMaker.dll
+/build/
+/mod_sebastiana/
+/release/skin_marta_sebastiana*
+/release/pic_marta_sebastiana*
+/release/marta_loader_backup.bin
+/unity_build_report.txt
+/Sebastiana_*.png
+*.blend1
+*.zip
+__pycache__/
+# Source GLB is 98 MB (close to GitHub's 100 MB limit); see README.
+/model/Sebastiana_source.glb
