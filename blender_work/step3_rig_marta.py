@@ -228,8 +228,8 @@ hem_z = min(_co[i].z for i in SKIRT)
 # follows the shins: in a lunge or a raised knee the shin stays nearly
 # vertical, so the hem moves forward with the knee but keeps hanging down,
 # instead of swinging up like a stiff cone around the hip.
-SKIRT_FRONT, SKIRT_BACK = float(os.environ.get('SKIRT_FRONT', '.85')), float(os.environ.get('SKIRT_BACK', '.4'))
-SKIRT_THIGH = .35                                     # share of it on the thighs above the knees
+SKIRT_FRONT, SKIRT_BACK = .85, .75
+SKIRT_THIGH = .6                                      # share of it on the thighs above the knees
 _cx = (J['LeftUpLeg']['head'].x + J['RightUpLeg']['head'].x) / 2
 _cy = (J['LeftUpLeg']['head'].y + J['RightUpLeg']['head'].y) / 2
 knee_z = (J['LeftLeg']['head'].z + J['RightLeg']['head'].z) / 2
@@ -237,17 +237,21 @@ for i in SKIRT:
     p = _co[i]
     dx, dy = p.x - _cx, p.y - _cy; r = math.hypot(dx, dy) or 1e-6
     front = _sm((-dy / r + .3) / 1.0)                   # 1 = front of the skirt
-    # Marta always stands and steps with the right foot forward and the left
-    # behind (fencing footwork, the legs never cross). The front and the right
-    # side of the skirt therefore move as one panel with the right (leading)
-    # leg, the back and the left side with the left leg, blending softly over
-    # the two diagonals: the cloth stretches on one side and gathers on the
-    # other, and never splits open in front of or behind the legs.
-    _bw = float(os.environ.get('DIAG_HALF', '.55'))
-    side = 1 - _sm(((-.7071 * dx - .7071 * dy) / r + _bw) / (2 * _bw))   # 1 = left leg
-    share = (SKIRT_BACK + (SKIRT_FRONT - SKIRT_BACK) * front) * _sm((hip_z - p.z) / max(1e-6, hip_z - knee_z))
-    _st = float(os.environ.get('SHIN_TOP', '.45'))
-    shin = _sm((knee_z + _st - p.z) / _st)              # from high on the thigh down: the knee carries it
+    # These bone weights are only the base movement: the cloth simulation in
+    # game (Unity Cloth with capsules around thighs and shins) lets the fabric
+    # move away from the legs. Left/right is split by the angle around the body,
+    # with a wide blend over the front and back. Measured against 2,096 real poses
+    # of Marta's animations, this symmetric split leaves the fewest big
+    # penetrations for the cloth to fix (Marta steps both ways and kicks high).
+    _bw = .75
+    side = _sm((dx / r + _bw) / (2 * _bw))                # 1 = left leg
+    # From just below the waist seam (which keeps the bodice's pelvis weights so it
+    # never opens) the skirt already goes partly with the thighs, so a knee raised
+    # high pushes the upper skirt forward instead of coming through it.
+    _d = _sm((hip_z - p.z) / max(1e-6, hip_z - knee_z))
+    share = (SKIRT_BACK + (SKIRT_FRONT - SKIRT_BACK) * front) * max(_d, .4 * _sm((hip_z - .005 - p.z) / .15))
+    _st = float(os.environ.get('SHIN_TOP', '.6'))
+    shin = _sm((knee_z + _st - p.z) / _st) * _d         # from high on the thigh down: the knee carries it
     up, low = share * (SKIRT_THIGH * (1 - shin)), share * shin
     w = {'Hips': 1 - up - low}
     for s, k in (('Left', side), ('Right', 1 - side)):
@@ -489,15 +493,17 @@ def material(name):
     bs = mt.node_tree.nodes['Principled BSDF']; bs.inputs['Roughness'].default_value = .85
     mt.node_tree.links.new(tx.outputs['Color'], bs.inputs['Base Color']); return mt
 mesh.data.materials.clear()
-mesh.data.materials.append(material('SebastianaMaterial')); mesh.data.materials.append(material('HeadMaterial'))
-for p in mesh.data.polygons: p.material_index = 1 if p.index in head_faces else 0
+mesh.data.materials.append(material('SebastianaMaterial')); mesh.data.materials.append(material('HeadMaterial')); mesh.data.materials.append(material('SkirtMaterial'))
+# The skirt is its own part: in game it is simulated as cloth (Unity Cloth).
+for p in mesh.data.polygons:
+    p.material_index = 1 if p.index in head_faces else (2 if all(v in SKIRT for v in p.vertices) else 0)
 bpy.ops.object.select_all(action='DESELECT'); mesh.select_set(True); bpy.context.view_layer.objects.active = mesh
 bpy.ops.object.mode_set(mode='EDIT'); bpy.ops.mesh.select_all(action='SELECT')
 bpy.ops.mesh.separate(type='MATERIAL'); bpy.ops.object.mode_set(mode='OBJECT')
 parts = [o for o in bpy.data.objects if o.type == 'MESH']
 for o in parts:
     used = {o.data.materials[p.material_index].name for p in o.data.polygons}
-    o.name = 'SebastianaHead' if any(n.startswith('HeadMaterial') for n in used) else 'SebastianaBody'
+    o.name = 'SebastianaHead' if any(n.startswith('HeadMaterial') for n in used) else ('SebastianaSkirt' if any(n.startswith('SkirtMaterial') for n in used) else 'SebastianaBody')
     o.data.name = o.name
     # Separating by material can leave stray vertices without faces in a part.
     import bmesh
@@ -505,7 +511,22 @@ for o in parts:
     stray = [v for v in bm.verts if not v.link_faces]
     bmesh.ops.delete(bm, geom=stray, context='VERTS'); bm.to_mesh(o.data); bm.free()
     print('STRAY_VERTICES_REMOVED', o.name, len(stray), flush=True)
-
+# The cloth solver works on every skirt vertex, so the skirt is lightened to
+# about 5,000 vertices (two fighters may wear it at once). Its open edges (the
+# waist seam with the bodice and the hems) are protected so the seam stays
+# closed; textures and normal map keep the folds' detail.
+SKIRT_CLOTH_VERTS = 5000
+sk = next(o for o in parts if o.name == 'SebastianaSkirt')
+bm = bmesh.new(); bm.from_mesh(sk.data)
+edge_verts = {v.index for e in bm.edges if e.is_boundary for v in e.verts}; bm.free()
+vg = sk.vertex_groups.new(name='_decimate'); vg.add([v.index for v in sk.data.vertices if v.index not in edge_verts], 1., 'REPLACE')
+before = len(sk.data.vertices)
+bpy.ops.object.select_all(action='DESELECT'); sk.select_set(True); bpy.context.view_layer.objects.active = sk
+d = sk.modifiers.new('ClothBudget', 'DECIMATE'); d.decimate_type = 'COLLAPSE'; d.ratio = min(1., SKIRT_CLOTH_VERTS / before)
+d.vertex_group = '_decimate'; d.vertex_group_factor = 1.
+bpy.ops.object.modifier_apply(modifier='ClothBudget')
+sk.vertex_groups.remove(sk.vertex_groups['_decimate'])
+print('SKIRT_CLOTH_MESH', before, '->', len(sk.data.vertices), 'protected edge verts', len(edge_verts), flush=True)
 # --- QA renders ---------------------------------------------------------------
 sc = bpy.context.scene; sc.render.engine = 'BLENDER_WORKBENCH'
 sc.display.shading.light = 'STUDIO'; sc.display.shading.color_type = 'TEXTURE'

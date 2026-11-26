@@ -2,11 +2,10 @@
 
 A fan-made skin that works only for Marta. It runs on Marta's native 68-joint skeleton (Mafra5/Marfa), with her original moves and rapier. Sebastiana Inés Josefa de San Agustín, an Indigenous noblewoman of 18th-century New Spain, wears a blue brocade gown with a lace-trimmed bodice, lace sleeve ruffles, a blue overskirt draped over a red floral underskirt, a pearl necklace with a cross, and a braided diadem with red flowers.
 
-- **A skirt that moves on its own.** Below the waist the dress is a separate shell around the legs (the mesh only joins them at the hips), so the legs move inside it and the skirt follows them like real cloth:
-  - it is found geometrically: cutting the mesh lower and lower until the legs come apart from it;
-  - it hangs from the pelvis at the waist; from high on the thighs down it follows the knees and shins, the front more (85%) than the back (75%). In a lunge or a guard the shin stays nearly vertical, so the hem moves forward with the knee but keeps hanging down, instead of swinging up like a stiff cone around the hip;
-  - Marta always stands and steps with the right foot forward (fencing footwork, the legs never cross), so the front and the right side of the skirt move as one panel with the leading right leg and the back and the left side with the left leg, blending softly over the two diagonals: the cloth stretches on one side and gathers on the other and never splits open in front of or behind the legs;
-  - its weights depend only on the height and the direction around the body, never on the distance from the legs, so the blue overskirt and the red underskirt, which lie close together, always move together and never cross;
+- **A skirt simulated as real cloth.** Below the waist the dress is a separate shell around the legs. It is its own part with Unity's Cloth component, set up with the damping, gravity, friction and solver rate of Marta's own dress (`ClothDress`):
+  - it is found geometrically (cutting the mesh lower and lower until the legs come apart from it) and lightened to about 5,000 vertices for the simulation, with the waist seam and hems protected;
+  - its bone weights give the base movement (a wide left/right split, from just below the waist going more and more with the thighs and then the shins); the cloth may leave that base by up to 35 cm, already 12 cm below the waist seam, which never moves;
+  - capsules around both thighs and shins push the fabric away, so the legs stay inside it. They are triggers on the Ignore Raycast layer: Unity Cloth still collides with them (tested), and they take no part in the fight's physics;
   - while binding it is carried as one piece, scaled from the waist to the floor, so the hips can be fitted to Marta's without shearing the layered skirt.
 - **Soft waist, stiff bodice.** The bodice above the waist moves as one piece (Spine1); the waist blends Hips → Spine → Spine1 as on the Felipe II skin.
 - **Relaxed shoulders and clean armpits.** The upper body is aligned at the arm joints, so the shoulders stay low and the neck shows. Under the armpit the cloth is shared half and half between arm and torso: the arms hang close to the body without the sleeve folding over the armpit when the sword arm goes forward.
@@ -16,15 +15,9 @@ A fan-made skin that works only for Marta. It runs on Marta's native 68-joint sk
 - **Sharp textures within the game budget.** The 1M-triangle source is reduced to 80k triangles after welding its UV seams; each part stays under the 65k vertices the game's wound decal builder supports.
 - **Fingers weighted from the geometry.** Every finger vertex follows its two nearest finger chains, blended by distance, so the hand closes cleanly on the grip.
 
-## Known issue: legs clipping through the skirt
+## Known issue: extreme leg poses
 
-Sebastiana wears a floor-length gown, but she uses Marta's original animations, which were made for Marta's knee-length dress. Hellish Quart skins can only attach the skirt to the leg bones; there is no real cloth simulation. In normal stances and fencing footwork the skirt follows the legs and covers them. In some large movements the legs can clip through the skirt and briefly show:
-
-- attacks that raise the knee very high;
-- low dodges;
-- grabs, finishers and some death animations.
-
-This is a limitation of combining a long dress with the game's existing animations, not a broken install. A future update may shorten the dress or try cloth physics to remove it.
+Marta's animations were made for her knee-length dress. The floor-length skirt is simulated as cloth and pushed by the legs, so in normal stances, footwork, lunges and dodges the legs stay inside it. When a knee rises almost to waist height, the thigh can still show above the skirt for a moment, and where the overskirt and underskirt cross, small gaps can appear between the two layers.
 ## Release
 
 The zip contains only the four bundles (`skin_marta_sebastiana`, `pic_marta_sebastiana` and their `.manifest` files) and `README.txt`. There are no scripts. Install by copying the four files into `Hellish Quart_Data/StreamingAssets/`. `README.txt` also documents the optional manual first-person (FPP) adjustment for Marta's skin loader (4 bytes of `resources.assets`, game version of November 2026).

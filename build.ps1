@@ -2,7 +2,7 @@ $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $mod = Join-Path $root 'unity_project\Assets\SebastianaMod'
 # Generated assets are rebuilt from scratch: a reused mesh asset can keep stale data.
-foreach ($g in 'SebastianaBody.asset', 'SebastianaHeadRigidSkin.asset', 'Skin.prefab', 'Skin_pic.prefab') {
+foreach ($g in 'SebastianaBody.asset', 'SebastianaSkirt.asset', 'SebastianaHeadRigidSkin.asset', 'Skin.prefab', 'Skin_pic.prefab') {
   foreach ($f in (Join-Path $mod $g), (Join-Path $mod "$g.meta")) { if (Test-Path $f) { Remove-Item $f -Force } }
 }
 Copy-Item (Join-Path $root 'build\marta\Skin.fbx') $mod -Force

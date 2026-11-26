@@ -98,8 +98,8 @@ public static class SebastianaFinalBuild {
   foreach(var a in skin.GetComponentsInChildren<Animation>())UnityEngine.Object.DestroyImmediate(a);
   int triangles=0;float maxRotDifference=0;int rigidHeadCount=0;
   foreach(var r in source.GetComponentsInChildren<SkinnedMeshRenderer>()) {
-   bool head=r.name.Contains("Head");
-   var child=new GameObject(head?"SebastianaHead":"SebastianaBody");
+   bool head=r.name.Contains("Head");bool skirt=r.name.Contains("Skirt");
+   var child=new GameObject(head?"SebastianaHead":(skirt?"SebastianaSkirt":"SebastianaBody"));
    // The native decal system shares bind poses by bone identity. Keep
    // both renderers in one mesh space so their shared Head bind agrees.
    var parent=skin.transform;child.transform.SetParent(parent,false);
@@ -141,6 +141,7 @@ public static class SebastianaFinalBuild {
    smr.quality=SkinQuality.Bone4;
    smr.updateWhenOffscreen=true;
    smr.localBounds=head?existing.bounds:new Bounds(new Vector3(0,1,0),Vector3.one*5);
+   if(skirt)AddSkirtCloth(child,smr,map);
   }
   if(rigidHeadCount<1000)throw new Exception("Rigid head is missing");
   VerifyDecalMeshes(skin);
@@ -158,9 +159,44 @@ public static class SebastianaFinalBuild {
   File.WriteAllText(Path.Combine(Root,"unity_build_report.txt"),"Source: Sebastiana_source.glb (T-pose PBR model with its own rig, decimated to the game budget)\nCharacter: Marta only (native Mafra5/Marfa rig)\nUnity "+Application.unityVersion+"\nTriangles: "+triangles+"\nRigid head skinned to Head only: "+rigidHeadCount+" vertices\nReadable body and head, each with one wound-projection submesh.\nNative Marta skeleton: 68 joints, original local positions/rotations/scales.\nBoth Marta-specific bundles loaded successfully.\n");
   Debug.Log("SEBASTIANA_MARTA_BUILD_OK");
  }
- static void VerifyDecalMeshes(GameObject skin) {
+ // The floor-length skirt is simulated as cloth, like Marta's own dress
+ // (ClothDress), with her dress's damping, gravity, friction and solver rate.
+ // Bone weights give its base movement; the cloth may leave it by up to
+ // SkirtMaxDistance at the hem (nothing at the waist seam) and is pushed out by
+ // capsules around both thighs and shins, so the legs never pass through.
+ // The capsules are triggers on the Ignore Raycast layer: Unity Cloth still
+ // collides with them (tested), but they take no part in the fight's physics.
+ const float SkirtMaxDistance=.35f;
+ static void AddSkirtCloth(GameObject child,SkinnedMeshRenderer smr,Dictionary<string,Transform> map) {
+  var caps=new List<CapsuleCollider>();
+  foreach(var side in new[]{"Left","Right"})
+   foreach(var seg in new[]{new[]{"UpLeg","Leg",".095"},new[]{"Leg","Foot",".07"}}) {
+    var a=map[side+seg[0]].position;var b=map[side+seg[1]].position;float r=float.Parse(seg[2],System.Globalization.CultureInfo.InvariantCulture);
+    // the thigh capsule starts just below the hip joint, clear of the fixed waist seam
+    if(seg[0]=="UpLeg")a+=(b-a).normalized*r;
+    var go=new GameObject("SkirtCollider_"+side+seg[0]);go.layer=2;go.transform.SetParent(map[side+seg[0]],true);
+    go.transform.position=(a+b)*.5f;go.transform.rotation=Quaternion.FromToRotation(Vector3.up,b-a);
+    var c=go.AddComponent<CapsuleCollider>();c.direction=1;c.radius=r;c.height=(b-a).magnitude+2*r;c.isTrigger=true;caps.Add(c);
+   }
+  var cloth=child.AddComponent<Cloth>();
+  cloth.stretchingStiffness=1f;cloth.bendingStiffness=.8f;cloth.useTethers=true;cloth.useGravity=true;cloth.damping=.6f;cloth.useVirtualParticles=1f;
+  cloth.worldVelocityScale=.5f;cloth.worldAccelerationScale=1f;cloth.friction=.5f;cloth.collisionMassScale=0f;
+  cloth.useContinuousCollision=1f;cloth.clothSolverFrequency=120f;cloth.sleepThreshold=.1f;
+  cloth.capsuleColliders=caps.ToArray();
+  var verts=cloth.vertices;var co=cloth.coefficients;
+  if(verts.Length!=co.Length||co.Length==0)throw new Exception("Cloth vertices "+verts.Length+" vs coefficients "+co.Length);
+  float top=verts.Max(v=>v.y),hem=verts.Min(v=>v.y);
+  for(int i=0;i<co.Length;i++) {
+   // Only the waist seam stays put; 12 cm below it the cloth already has its full
+   // freedom, so a knee raised to the waist can push the upper skirt away.
+   float h=Mathf.Clamp01((top-.015f-verts[i].y)/.12f);
+   co[i].maxDistance=SkirtMaxDistance*Mathf.Pow(h,.75f);co[i].collisionSphereDistance=0f;
+  }
+  cloth.coefficients=co;
+  Debug.Log("SKIRT_CLOTH vertices "+co.Length+" mesh "+smr.sharedMesh.vertexCount+" capsules "+caps.Count+" top "+top.ToString("F3")+" hem "+hem.ToString("F3"));
+ } static void VerifyDecalMeshes(GameObject skin) {
   var renderers=skin.GetComponentsInChildren<SkinnedMeshRenderer>();
-  if(renderers.Length!=2)throw new Exception("Expected body and rigid head for wound projection");
+  if(renderers.Length!=3)throw new Exception("Expected body, rigid head and cloth skirt for wound projection");
   foreach(var renderer in renderers) {
    var mesh=renderer.sharedMesh;
    if(!mesh.isReadable||mesh.subMeshCount!=1||mesh.boneWeights.Length!=mesh.vertexCount||
