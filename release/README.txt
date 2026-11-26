@@ -6,6 +6,20 @@ Sebastiana Ines Josefa de San Agustin, noblewoman of 18th-century New Spain:
 blue brocade gown with lace ruffles and a draped overskirt over a red
 floral underskirt. The skirt moves on its own around the legs.
 
+KNOWN ISSUE - LEGS CLIPPING THROUGH THE SKIRT
+Sebastiana wears a floor-length gown, but she uses Marta's original
+animations, which were made for Marta's knee-length dress. Hellish Quart
+skins can only attach the skirt to the leg bones; there is no real cloth
+simulation. In normal stances and fencing footwork the skirt follows the legs
+and covers them. In some large movements the legs can clip through the skirt
+and briefly show:
+  - attacks that raise the knee very high;
+  - low dodges;
+  - grabs, finishers and some death animations.
+This is a limitation of combining a long dress with the game's existing
+animations, not a broken install. A future update may shorten the dress or
+try cloth physics to remove it.
+
 INSTALL
 1. Close Hellish Quart.
 2. In Steam, right-click Hellish Quart > Manage > Browse local files.
