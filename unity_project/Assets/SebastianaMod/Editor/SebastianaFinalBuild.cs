@@ -67,7 +67,7 @@ public static class SebastianaFinalBuild {
   }).ToArray();
  }
  public static void Build() {
-  AssetDatabase.Refresh();Texture("Sebastiana_BaseColor.png");Texture("Sebastiana_Normal.png",true);Texture("Sebastiana_ORM.png");
+  AssetDatabase.Refresh();Texture("Sebastiana_BaseColor.png");Texture("Sebastiana_Normal.png",true);Texture("Sebastiana_ORM.png");Texture("Sebastiana_Skirt_BaseColor.png");Texture("Sebastiana_Skirt_Normal.png",true);Texture("Sebastiana_Skirt_ORM.png");
   var importer=(ModelImporter)AssetImporter.GetAtPath(D+"Skin.fbx");
   if(!importer.isReadable||importer.importAnimation||importer.animationType!=ModelImporterAnimationType.Generic||
      importer.optimizeGameObjects||importer.meshCompression!=ModelImporterMeshCompression.Off||
@@ -137,7 +137,7 @@ public static class SebastianaFinalBuild {
    smr.sharedMesh=existing;
    smr.bones=bones;
    smr.rootBone=map["Root"];
-   smr.sharedMaterial=head?headMat:mat;
+   smr.sharedMaterial=head?headMat:(skirt?SkirtMaterial(mat):mat);
    smr.quality=SkinQuality.Bone4;
    smr.updateWhenOffscreen=true;
    smr.localBounds=head?existing.bounds:new Bounds(new Vector3(0,1,0),Vector3.one*5);
@@ -166,11 +166,21 @@ public static class SebastianaFinalBuild {
  // capsules around both thighs and shins, so the legs never pass through.
  // The capsules are triggers on the Ignore Raycast layer: Unity Cloth still
  // collides with them (tested), but they take no part in the fight's physics.
+ // The cloth skirt is a clean grid with its own baked textures (see step3).
+ static Material SkirtMaterial(Material mat) {
+  var m=AssetDatabase.LoadAssetAtPath<Material>(D+"SebastianaSkirt.mat");
+  if(m==null){m=new Material(mat);AssetDatabase.CreateAsset(m,D+"SebastianaSkirt.mat");}
+  m.CopyPropertiesFromMaterial(mat);
+  m.SetTexture("_MainTex",AssetDatabase.LoadAssetAtPath<Texture2D>(D+"Sebastiana_Skirt_BaseColor.png"));
+  m.SetTexture("_BumpMap",AssetDatabase.LoadAssetAtPath<Texture2D>(D+"Sebastiana_Skirt_Normal.png"));
+  m.SetTexture("_ORM",AssetDatabase.LoadAssetAtPath<Texture2D>(D+"Sebastiana_Skirt_ORM.png"));
+  EditorUtility.SetDirty(m);return m;
+ }
  const float SkirtMaxDistance=.35f;
  static void AddSkirtCloth(GameObject child,SkinnedMeshRenderer smr,Dictionary<string,Transform> map) {
   var caps=new List<CapsuleCollider>();
   foreach(var side in new[]{"Left","Right"})
-   foreach(var seg in new[]{new[]{"UpLeg","Leg",".095"},new[]{"Leg","Foot",".07"}}) {
+   foreach(var seg in new[]{new[]{"UpLeg","Leg",".105"},new[]{"Leg","Foot",".08"},new[]{"Foot","ToeBase_END",".06"}}) {
     var a=map[side+seg[0]].position;var b=map[side+seg[1]].position;float r=float.Parse(seg[2],System.Globalization.CultureInfo.InvariantCulture);
     // the thigh capsule starts just below the hip joint, clear of the fixed waist seam
     if(seg[0]=="UpLeg")a+=(b-a).normalized*r;
@@ -179,19 +189,33 @@ public static class SebastianaFinalBuild {
     var c=go.AddComponent<CapsuleCollider>();c.direction=1;c.radius=r;c.height=(b-a).magnitude+2*r;c.isTrigger=true;caps.Add(c);
    }
   var cloth=child.AddComponent<Cloth>();
-  cloth.stretchingStiffness=1f;cloth.bendingStiffness=.8f;cloth.useTethers=true;cloth.useGravity=true;cloth.damping=.6f;cloth.useVirtualParticles=1f;
+  cloth.stretchingStiffness=1f;cloth.bendingStiffness=1f;cloth.useTethers=true;cloth.useGravity=true;cloth.damping=.6f;cloth.useVirtualParticles=1f;
   cloth.worldVelocityScale=.5f;cloth.worldAccelerationScale=1f;cloth.friction=.5f;cloth.collisionMassScale=0f;
   cloth.useContinuousCollision=1f;cloth.clothSolverFrequency=120f;cloth.sleepThreshold=.1f;
   cloth.capsuleColliders=caps.ToArray();
   var verts=cloth.vertices;var co=cloth.coefficients;
   if(verts.Length!=co.Length||co.Length==0)throw new Exception("Cloth vertices "+verts.Length+" vs coefficients "+co.Length);
   float top=verts.Max(v=>v.y),hem=verts.Min(v=>v.y);
+  // The seam with the bodice is not at one height (near the thighs the skirt
+  // starts lower), so it is found as the skirt vertices that coincide with body
+  // vertices. They stay put; the freedom grows with the distance from the seam
+  // and is full 6 cm away, so the seam never opens and a raised knee can still
+  // push the upper skirt away.
+  var body=map["Root"].parent.GetComponentsInChildren<SkinnedMeshRenderer>().First(x=>x.name=="SebastianaBody").sharedMesh.vertices;
+  // the grid's top row runs just under the bodice's lower edge: within 1.5 cm of it
+  var cells=new Dictionary<Vector3Int,List<Vector3>>();
+  foreach(var p in body){var k=Vector3Int.FloorToInt(p*100f);if(!cells.TryGetValue(k,out var l))cells[k]=l=new List<Vector3>();l.Add(p);}
+  var top2=verts.Max(v=>v.y);
+  var seam=verts.Where(v=>{var k=Vector3Int.FloorToInt(v*100f);for(int dx=-2;dx<=2;dx++)for(int dy=-2;dy<=2;dy++)for(int dz=-2;dz<=2;dz++)if(cells.TryGetValue(k+new Vector3Int(dx,dy,dz),out var l)&&l.Any(p=>(p-v).sqrMagnitude<.015f*.015f))return true;return false;}).ToArray();
+  // only the waist: body points near the skirt lower down (the basque) do not pin it
+  seam=seam.Where(v=>v.y>top2-.1f).ToArray();
+  if(seam.Length<50)throw new Exception("Skirt seam not found: "+seam.Length);
   for(int i=0;i<co.Length;i++) {
-   // Only the waist seam stays put; 12 cm below it the cloth already has its full
-   // freedom, so a knee raised to the waist can push the upper skirt away.
-   float h=Mathf.Clamp01((top-.015f-verts[i].y)/.12f);
+   float d=seam.Min(s=>(s-verts[i]).sqrMagnitude);
+   float h=Mathf.Clamp01((Mathf.Sqrt(d)-.005f)/.06f);
    co[i].maxDistance=SkirtMaxDistance*Mathf.Pow(h,.75f);co[i].collisionSphereDistance=0f;
   }
+  Debug.Log("SKIRT_SEAM "+seam.Length+" pinned "+co.Count(x=>x.maxDistance<=0f));
   cloth.coefficients=co;
   Debug.Log("SKIRT_CLOTH vertices "+co.Length+" mesh "+smr.sharedMesh.vertexCount+" capsules "+caps.Count+" top "+top.ToString("F3")+" hem "+hem.ToString("F3"));
  } static void VerifyDecalMeshes(GameObject skin) {

@@ -511,25 +511,145 @@ for o in parts:
     stray = [v for v in bm.verts if not v.link_faces]
     bmesh.ops.delete(bm, geom=stray, context='VERTS'); bm.to_mesh(o.data); bm.free()
     print('STRAY_VERTICES_REMOVED', o.name, len(stray), flush=True)
-# The cloth solver works on every skirt vertex, so the skirt is lightened to
-# about 5,000 vertices (two fighters may wear it at once). Its open edges (the
-# waist seam with the bodice and the hems) are protected so the seam stays
-# closed; textures and normal map keep the folds' detail.
-SKIRT_CLOTH_VERTS = 5000
+# The skirt is simulated as cloth in game (Unity Cloth). The sculpted skirt is
+# two close layers (blue overskirt over red underskirt) with many small pieces
+# and near-duplicate points; the cloth solver throws such points far out of
+# place (spikes and holes even with the cloth pinned). So the cloth gets a clean
+# single surface instead: a regular grid that follows the skirt's outer surface,
+# from the waist seam (exactly along the bodice edge) to the hem, with the
+# skirt's colours, normal map and ORM baked onto it. Its weights come from the
+# sculpted skirt. The game's shader draws both sides, so the inside shows too.
+import bmesh
+from mathutils.bvhtree import BVHTree
+from mathutils.kdtree import KDTree
+SKIRT_COLS, SKIRT_ROWS = 136, 60
 sk = next(o for o in parts if o.name == 'SebastianaSkirt')
-bm = bmesh.new(); bm.from_mesh(sk.data)
-edge_verts = {v.index for e in bm.edges if e.is_boundary for v in e.verts}; bm.free()
-vg = sk.vertex_groups.new(name='_decimate'); vg.add([v.index for v in sk.data.vertices if v.index not in edge_verts], 1., 'REPLACE')
-before = len(sk.data.vertices)
-bpy.ops.object.select_all(action='DESELECT'); sk.select_set(True); bpy.context.view_layer.objects.active = sk
-d = sk.modifiers.new('ClothBudget', 'DECIMATE'); d.decimate_type = 'COLLAPSE'; d.ratio = min(1., SKIRT_CLOTH_VERTS / before)
-d.vertex_group = '_decimate'; d.vertex_group_factor = 1.
-bpy.ops.object.modifier_apply(modifier='ClothBudget')
-sk.vertex_groups.remove(sk.vertex_groups['_decimate'])
-print('SKIRT_CLOTH_MESH', before, '->', len(sk.data.vertices), 'protected edge verts', len(edge_verts), flush=True)
-# --- QA renders ---------------------------------------------------------------
+bd = next(o for o in parts if o.name == 'SebastianaBody')
+SV = [v.co.copy() for v in sk.data.vertices]
+kd = KDTree(len(bd.data.vertices))
+for v in bd.data.vertices: kd.insert(v.co, v.index)
+kd.balance()
+def ang(p): return math.atan2(p.y - _cy, p.x - _cx)
+NB = 360
+def binof(a): return int((a + math.pi) / (2 * math.pi) * NB) % NB
+top = [None] * NB; hem = [9.] * NB
+for p in SV:
+    b = binof(ang(p)); hem[b] = min(hem[b], p.z)
+    if top[b] is None or p.z > top[b].z: top[b] = p                # the skirt's top edge = its seam
+def fill(arr):
+    known = [i for i in range(NB) if arr[i] is not None]
+    out = []
+    for i in range(NB):
+        if arr[i] is not None: out.append(arr[i]); continue
+        a = max((k for k in known if k < i), default=known[-1] - NB); b = min((k for k in known if k > i), default=known[0] + NB)
+        w = (i - a) / (b - a); out.append(arr[a % NB].lerp(arr[b % NB], w))
+    return out
+print('SKIRT_SEAM_BINS', sum(x is not None for x in top), flush=True)
+top = fill(top)
+# a smooth top edge, tucked just under the bodice's lower edge (which covers it)
+_tz = [max(top[(i + k) % NB].z for k in range(-6, 7)) for i in range(NB)]
+_tz = [sum(_tz[(i + k) % NB] for k in range(-3, 4)) / 7 for i in range(NB)]
+_tr = [sum((top[(i + k) % NB] - Vector((_cx, _cy, 0))).to_2d().length for k in range(-3, 4)) / 7 * .96 for i in range(NB)]
+top = [Vector((_cx + _tr[i] * math.cos(-math.pi + 2 * math.pi * (i + .5) / NB), _cy + _tr[i] * math.sin(-math.pi + 2 * math.pi * (i + .5) / NB), _tz[i])) for i in range(NB)]
+hem = [min(hem[(i + k) % NB] for k in (-2, -1, 0, 1, 2)) for i in range(NB)]
+def at(arr, a):
+    x = (a + math.pi) / (2 * math.pi) * NB - .5; i = math.floor(x); w = x - i
+    A, B = arr[i % NB], arr[(i + 1) % NB]
+    return A.lerp(B, w) if isinstance(A, Vector) else A * (1 - w) + B * w
+bvh = BVHTree.FromPolygons(SV, [list(p.vertices) for p in sk.data.polygons])
+grid = []
+for i in range(SKIRT_COLS + 1):
+    a = -math.pi + 2 * math.pi * (i % SKIRT_COLS) / SKIRT_COLS
+    d = Vector((math.cos(a), math.sin(a), 0.)); t0 = at(top, a); h0 = at(hem, a) + .004
+    col = [t0.copy()]; r_prev = (t0 - Vector((_cx, _cy, t0.z))).length
+    for j in range(1, SKIRT_ROWS):
+        s = j / (SKIRT_ROWS - 1); z = t0.z + (h0 - t0.z) * s
+        o = Vector((_cx, _cy, z)) + d * 1.5
+        hit = bvh.ray_cast(o, -d, 1.5)
+        r = (hit[0] - Vector((_cx, _cy, z))).length if hit[0] is not None else r_prev
+        r = max(r, r_prev - .02) if j < 6 else r                # no dip right under the seam
+        col.append(Vector((_cx, _cy, z)) + d * r); r_prev = r
+    grid.append(col)
+me2 = bpy.data.meshes.new('SebastianaSkirt'); bm = bmesh.new()
+uvl = bm.loops.layers.uv.new('UVMap')
+def build(flip):
+    vs = [[bm.verts.new(grid[i][j]) for j in range(SKIRT_ROWS)] for i in range(SKIRT_COLS + 1)]
+    for i in range(SKIRT_COLS):
+        for j in range(SKIRT_ROWS - 1):
+            q = [vs[i][j], vs[i + 1][j], vs[i + 1][j + 1], vs[i][j + 1]]
+            uv = [(i / SKIRT_COLS, 1 - j / (SKIRT_ROWS - 1)), ((i + 1) / SKIRT_COLS, 1 - j / (SKIRT_ROWS - 1)),
+                  ((i + 1) / SKIRT_COLS, 1 - (j + 1) / (SKIRT_ROWS - 1)), (i / SKIRT_COLS, 1 - (j + 1) / (SKIRT_ROWS - 1))]
+            if flip: q, uv = q[::-1], uv[::-1]
+            f = bm.faces.new(q); f.smooth = True
+            for l, u in zip(f.loops, uv): l[uvl].uv = u
+build(False); bm.normal_update()
+out_sign = sum((f.calc_center_median() - Vector((_cx, _cy, f.calc_center_median().z))).dot(f.normal) for f in bm.faces)
+if out_sign < 0:
+    for f in list(bm.faces): f.normal_flip()
+bm.to_mesh(me2); bm.free()
+shell = bpy.data.objects.new('SkirtShell', me2); bpy.context.scene.collection.objects.link(shell)
+# weights: interpolated from the sculpted skirt's nearest surface point
+gn = {g.index: g.name for g in sk.vertex_groups}
+SW = [{gn[g.group]: g.weight for g in v.groups} for v in sk.data.vertices]
+polys = [list(p.vertices) for p in sk.data.polygons]
+from mathutils.geometry import barycentric_transform, intersect_point_tri
+wts = []
+for v in me2.vertices:
+    loc, nrm, fi, dist = bvh.find_nearest(v.co)
+    pv = polys[fi]; acc = collections.defaultdict(float)
+    tri = (SV[pv[0]], SV[pv[1]], SV[pv[2]])
+    # barycentric weights on the first triangle of the face (faces are triangles or quads)
+    A, B, C = tri; v0, v1, v2 = B - A, C - A, loc - A
+    d00, d01, d11, d20, d21 = v0.dot(v0), v0.dot(v1), v1.dot(v1), v2.dot(v0), v2.dot(v1)
+    den = d00 * d11 - d01 * d01 or 1e-12
+    wb = (d11 * d20 - d01 * d21) / den; wc = (d00 * d21 - d01 * d20) / den; wa = 1 - wb - wc
+    for k, w in zip(pv[:3], (wa, wb, wc)):
+        w = max(0., w)
+        for g, x in SW[k].items(): acc[g] += w * x
+    top4 = sorted(acc.items(), key=lambda kv: -kv[1])[:4]; tot = sum(x for _, x in top4) or 1.
+    wts.append([(g, x / tot) for g, x in top4 if x > 1e-4])
+for g in sk.vertex_groups: shell.vertex_groups.new(name=g.name)
+for vi, ws in enumerate(wts):
+    for g, x in ws: shell.vertex_groups[g].add([vi], x, 'REPLACE')
+# --- bake the skirt's textures onto the clean surface ---------------------------
+SKW, SKH = 4096, 1024
+sc0 = bpy.context.scene; sc0.render.engine = 'CYCLES'; sc0.cycles.device = 'CPU'; sc0.cycles.samples = 1
+bk = sc0.render.bake; bk.use_selected_to_active = True; bk.cage_extrusion = .03; bk.max_ray_distance = .1; bk.margin = 8
+def src_material(kind):
+    mt = bpy.data.materials.new('bake_src_' + kind); mt.use_nodes = True; nt = mt.node_tree
+    for n in list(nt.nodes):
+        if n.type != 'OUTPUT_MATERIAL': nt.nodes.remove(n)
+    outn = next(n for n in nt.nodes if n.type == 'OUTPUT_MATERIAL')
+    tx = nt.nodes.new('ShaderNodeTexImage')
+    if kind == 'normal':
+        tx.image = bpy.data.images.load(os.path.join(BUILD, 'Sebastiana_Normal.png'), check_existing=True); tx.image.colorspace_settings.name = 'Non-Color'
+        nm = nt.nodes.new('ShaderNodeNormalMap'); bs = nt.nodes.new('ShaderNodeBsdfPrincipled')
+        nt.links.new(tx.outputs['Color'], nm.inputs['Color']); nt.links.new(nm.outputs['Normal'], bs.inputs['Normal']); nt.links.new(bs.outputs[0], outn.inputs['Surface'])
+    else:
+        tx.image = bpy.data.images.load(os.path.join(BUILD, 'Sebastiana_BaseColor.png' if kind == 'color' else 'Sebastiana_ORM.png'), check_existing=True)
+        if kind == 'orm': tx.image.colorspace_settings.name = 'Non-Color'
+        em = nt.nodes.new('ShaderNodeEmission'); nt.links.new(tx.outputs['Color'], em.inputs['Color']); nt.links.new(em.outputs[0], outn.inputs['Surface'])
+    return mt
+skirt_maps = {}
+for kind, fname, btype in (('color', 'Sebastiana_Skirt_BaseColor.png', 'EMIT'), ('orm', 'Sebastiana_Skirt_ORM.png', 'EMIT'), ('normal', 'Sebastiana_Skirt_Normal.png', 'NORMAL')):
+    im = bpy.data.images.new(fname[:-4], SKW, SKH, alpha=False, float_buffer=False)
+    if kind != 'color': im.colorspace_settings.name = 'Non-Color'
+    sk.data.materials.clear(); sk.data.materials.append(src_material(kind))
+    dm = bpy.data.materials.new('bake_dst_' + kind); dm.use_nodes = True; tn = dm.node_tree.nodes.new('ShaderNodeTexImage'); tn.image = im
+    dm.node_tree.nodes.active = tn; shell.data.materials.clear(); shell.data.materials.append(dm)
+    bpy.ops.object.select_all(action='DESELECT'); sk.select_set(True); shell.select_set(True); bpy.context.view_layer.objects.active = shell
+    bpy.ops.object.bake(type=btype, normal_space='TANGENT', use_selected_to_active=True, cage_extrusion=.03, max_ray_distance=.1, margin=8)
+    im.filepath_raw = os.path.join(BUILD, fname); im.file_format = 'PNG'; im.save(); skirt_maps[kind] = im
+    print('SKIRT_BAKED', fname, flush=True)
+sc0.render.engine = 'BLENDER_WORKBENCH'
+shell.data.materials.clear(); sm_ = material('SkirtMaterial'); sm_.node_tree.nodes['Image Texture'].image = skirt_maps['color']; shell.data.materials.append(sm_)
+parts.remove(sk); bpy.data.objects.remove(sk, do_unlink=True)
+shell.name = 'SebastianaSkirt'; shell.data.name = 'SebastianaSkirt'; shell.parent = arm
+m_ = shell.modifiers.new('Armature', 'ARMATURE'); m_.object = arm
+parts.append(shell)
+print('SKIRT_CLOTH_MESH grid', SKIRT_COLS, 'x', SKIRT_ROWS, 'verts', len(me2.vertices), flush=True)# --- QA renders ---------------------------------------------------------------
 sc = bpy.context.scene; sc.render.engine = 'BLENDER_WORKBENCH'
-sc.display.shading.light = 'STUDIO'; sc.display.shading.color_type = 'TEXTURE'
+sc.display.shading.light = 'STUDIO'; sc.display.shading.color_type = 'TEXTURE'; sc.display.shading.show_backface_culling = False
 sc.render.resolution_x = 1000; sc.render.resolution_y = 1200
 cam = bpy.data.objects.new('cam', bpy.data.cameras.new('cam')); sc.collection.objects.link(cam); sc.camera = cam
 cam.data.type = 'ORTHO'; cam.data.ortho_scale = 2.3

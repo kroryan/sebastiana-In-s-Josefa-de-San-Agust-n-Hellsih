@@ -6,7 +6,7 @@ foreach ($g in 'SebastianaBody.asset', 'SebastianaSkirt.asset', 'SebastianaHeadR
   foreach ($f in (Join-Path $mod $g), (Join-Path $mod "$g.meta")) { if (Test-Path $f) { Remove-Item $f -Force } }
 }
 Copy-Item (Join-Path $root 'build\marta\Skin.fbx') $mod -Force
-foreach ($t in 'Sebastiana_BaseColor.png', 'Sebastiana_Normal.png', 'Sebastiana_ORM.png') { Copy-Item (Join-Path $root "build\$t") $mod -Force }
+foreach ($t in 'Sebastiana_BaseColor.png', 'Sebastiana_Normal.png', 'Sebastiana_ORM.png', 'Sebastiana_Skirt_BaseColor.png', 'Sebastiana_Skirt_Normal.png', 'Sebastiana_Skirt_ORM.png') { Copy-Item (Join-Path $root "build\$t") $mod -Force }
 $unity = 'C:\Program Files\Unity\Hub\Editor\2019.4.0f1\Editor\Unity.exe'
 $log = Join-Path $root 'build\unity_build.log'
 $p = Start-Process -FilePath $unity -ArgumentList @('-batchmode', '-quit', '-projectPath', "`"$(Join-Path $root 'unity_project')`"", '-executeMethod', 'SebastianaBuild.Build', '-logFile', "`"$log`"") -PassThru

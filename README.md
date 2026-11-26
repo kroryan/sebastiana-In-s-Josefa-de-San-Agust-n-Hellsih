@@ -3,9 +3,9 @@
 A fan-made skin that works only for Marta. It runs on Marta's native 68-joint skeleton (Mafra5/Marfa), with her original moves and rapier. Sebastiana Inés Josefa de San Agustín, an Indigenous noblewoman of 18th-century New Spain, wears a blue brocade gown with a lace-trimmed bodice, lace sleeve ruffles, a blue overskirt draped over a red floral underskirt, a pearl necklace with a cross, and a braided diadem with red flowers.
 
 - **A skirt simulated as real cloth.** Below the waist the dress is a separate shell around the legs. It is its own part with Unity's Cloth component, set up with the damping, gravity, friction and solver rate of Marta's own dress (`ClothDress`):
-  - it is found geometrically (cutting the mesh lower and lower until the legs come apart from it) and lightened to about 5,000 vertices for the simulation, with the waist seam and hems protected;
-  - its bone weights give the base movement (a wide left/right split, from just below the waist going more and more with the thighs and then the shins); the cloth may leave that base by up to 35 cm, already 12 cm below the waist seam, which never moves;
-  - capsules around both thighs and shins push the fabric away, so the legs stay inside it. They are triggers on the Ignore Raycast layer: Unity Cloth still collides with them (tested), and they take no part in the fight's physics;
+  - it is found geometrically (cutting the mesh lower and lower until the legs come apart from it). The sculpted skirt is two close layers with many small pieces, which the cloth solver throws out of place (spikes and holes), so the cloth uses a clean single surface instead: a regular 136 x 60 grid that follows the skirt's outer surface from the waist seam to the hem. The skirt's colours, normal map and ORM are baked onto it at 4096 x 1024, so the folds and pattern stay;
+  - its bone weights give the base movement (a wide left/right split, from just below the waist going more and more with the thighs and then the shins); the cloth may leave that base by up to 35 cm, already 6 cm below the waist seam, which never moves;
+  - capsules around both thighs, shins and feet push the fabric away, so the legs stay inside it. They are triggers on the Ignore Raycast layer: Unity Cloth still collides with them (tested), and they take no part in the fight's physics;
   - while binding it is carried as one piece, scaled from the waist to the floor, so the hips can be fitted to Marta's without shearing the layered skirt.
 - **Soft waist, stiff bodice.** The bodice above the waist moves as one piece (Spine1); the waist blends Hips → Spine → Spine1 as on the Felipe II skin.
 - **Relaxed shoulders and clean armpits.** The upper body is aligned at the arm joints, so the shoulders stay low and the neck shows. Under the armpit the cloth is shared half and half between arm and torso: the arms hang close to the body without the sleeve folding over the armpit when the sword arm goes forward.
@@ -17,7 +17,7 @@ A fan-made skin that works only for Marta. It runs on Marta's native 68-joint sk
 
 ## Known issue: extreme leg poses
 
-Marta's animations were made for her knee-length dress. The floor-length skirt is simulated as cloth and pushed by the legs, so in normal stances, footwork, lunges and dodges the legs stay inside it. When a knee rises almost to waist height, the thigh can still show above the skirt for a moment, and where the overskirt and underskirt cross, small gaps can appear between the two layers.
+Marta's animations were made for her knee-length dress. The floor-length skirt is simulated as cloth and pushed by the legs, so in normal stances, footwork, lunges and dodges the legs stay inside it. When a knee rises almost to waist height, the knee can still show above the skirt for a moment.
 ## Release
 
 The zip contains only the four bundles (`skin_marta_sebastiana`, `pic_marta_sebastiana` and their `.manifest` files) and `README.txt`. There are no scripts. Install by copying the four files into `Hellish Quart_Data/StreamingAssets/`. `README.txt` also documents the optional manual first-person (FPP) adjustment for Marta's skin loader (4 bytes of `resources.assets`, game version of November 2026).

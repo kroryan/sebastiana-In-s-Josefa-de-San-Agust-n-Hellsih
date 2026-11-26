@@ -10,8 +10,8 @@ THE SKIRT IS SIMULATED AS CLOTH
 The floor-length skirt is simulated as real cloth and pushed by the legs, so
 in normal stances, footwork, lunges and dodges the legs stay inside it.
 Known issue: Marta's animations were made for her knee-length dress. When a
-knee rises almost to waist height, the thigh can still show above the skirt for
-a moment, and small gaps can appear where the overskirt and underskirt cross.
+knee rises almost to waist height, the knee can still show above the skirt for
+a moment.
 
 INSTALL
 1. Close Hellish Quart.
