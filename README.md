@@ -16,6 +16,15 @@ A fan-made skin that works only for Marta. It runs on Marta's native 68-joint sk
 - **Sharp textures within the game budget.** The 1M-triangle source is reduced to 80k triangles after welding its UV seams; each part stays under the 65k vertices the game's wound decal builder supports.
 - **Fingers weighted from the geometry.** Every finger vertex follows its two nearest finger chains, blended by distance, so the hand closes cleanly on the grip.
 
+## Known issue: legs clipping through the skirt
+
+Sebastiana wears a floor-length gown, but she uses Marta's original animations, which were made for Marta's knee-length dress. Hellish Quart skins can only attach the skirt to the leg bones; there is no real cloth simulation. In normal stances and fencing footwork the skirt follows the legs and covers them. In some large movements the legs can clip through the skirt and briefly show:
+
+- attacks that raise the knee very high;
+- low dodges;
+- grabs, finishers and some death animations.
+
+This is a limitation of combining a long dress with the game's existing animations, not a broken install. A future update may shorten the dress or try cloth physics to remove it.
 ## Release
 
 The zip contains only the four bundles (`skin_marta_sebastiana`, `pic_marta_sebastiana` and their `.manifest` files) and `README.txt`. There are no scripts. Install by copying the four files into `Hellish Quart_Data/StreamingAssets/`. `README.txt` also documents the optional manual first-person (FPP) adjustment for Marta's skin loader (4 bytes of `resources.assets`, game version of November 2026).
