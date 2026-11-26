@@ -237,10 +237,14 @@ for i in SKIRT:
     p = _co[i]
     dx, dy = p.x - _cx, p.y - _cy; r = math.hypot(dx, dy) or 1e-6
     front = _sm((-dy / r + .3) / 1.0)                   # 1 = front of the skirt
-    # front and back centres follow both legs alike (they must not split open
-    # between the legs when walking); only the sides follow their own leg
-    _sh = float(os.environ.get('SIDE_HALF', '.75'))
-    side = _sm((dx / r + _sh) / (2 * _sh))                # 1 = left side
+    # Marta always stands and steps with the right foot forward and the left
+    # behind (fencing footwork, the legs never cross). The front and the right
+    # side of the skirt therefore move as one panel with the right (leading)
+    # leg, the back and the left side with the left leg, blending softly over
+    # the two diagonals: the cloth stretches on one side and gathers on the
+    # other, and never splits open in front of or behind the legs.
+    _bw = float(os.environ.get('DIAG_HALF', '.55'))
+    side = 1 - _sm(((-.7071 * dx - .7071 * dy) / r + _bw) / (2 * _bw))   # 1 = left leg
     share = (SKIRT_BACK + (SKIRT_FRONT - SKIRT_BACK) * front) * _sm((hip_z - p.z) / max(1e-6, hip_z - knee_z))
     _st = float(os.environ.get('SHIN_TOP', '.45'))
     shin = _sm((knee_z + _st - p.z) / _st)              # from high on the thigh down: the knee carries it
